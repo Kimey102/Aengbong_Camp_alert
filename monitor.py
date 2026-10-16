@@ -30,7 +30,8 @@ SHOP_ENCODE = os.environ.get(
     "SHOP_ENCODE",
     "a12d6508ae5ea0562923cb1f2762761f3413ab4c988a6c8aa92ea7873e263bec",
 )
-TARGET_DATES = os.environ.get("TARGET_DATES", "").strip()      # 예: 20261107,20261114
+STAYS = os.environ.get("STAYS", "").strip()                    # 예: 20261113:2,20261120:2 (입실일:박수)
+TARGET_DATES = os.environ.get("TARGET_DATES", "").strip()      # 예: 20261107,20261114 (1박)
 WATCH_MONTHS = os.environ.get("WATCH_MONTHS", "").strip()      # 예: 202611,202612
 WEEKDAYS = os.environ.get("WEEKDAYS", "fri,sat").strip()       # WATCH_MONTHS와 함께 사용
 GROUPS = os.environ.get("GROUPS", "").strip()                  # 예: 데크캠핑장 (비우면 전체)
@@ -110,14 +111,16 @@ class XTicket:
         )
         return j["data"]["bookProductGroupList"]
 
-    def available_sites(self, group_code: str, date: str) -> list[str]:
+    def available_sites(self, group_code: str, date: str, nights: int = 1) -> list[str]:
+        """입실일부터 nights박 동안 연속으로 비어 있는 사이트 이름."""
+        end = (dt.datetime.strptime(date, "%Y%m%d") + dt.timedelta(days=nights - 1)).strftime("%Y%m%d")
         j = self._post(
             "/Web/Book/GetBookProduct010001.json",
             {
                 "product_group_code": group_code,
                 "start_date": date,
-                "end_date": date,
-                "book_days": "1",
+                "end_date": end,
+                "book_days": str(nights),
                 "two_stay_days": "0",
             },
         )
@@ -129,8 +132,18 @@ class XTicket:
 
 
 # ---------------------------------------------------------------- 대상 날짜
+def nights_of(key: str) -> list[str]:
+    """'20261113:2' -> ['20261113', '20261114'] (숙박하는 밤들)."""
+    start, _, n = key.partition(":")
+    d0 = dt.datetime.strptime(start, "%Y%m%d")
+    return [(d0 + dt.timedelta(days=i)).strftime("%Y%m%d") for i in range(int(n or 1))]
+
+
 def target_dates(today: dt.date) -> list[str]:
+    """감시 대상 키 목록. 1박은 '20261107', 연박은 '20261113:2' 형식."""
     dates: set[str] = set()
+    if STAYS:
+        dates.update(x.strip() for x in STAYS.split(",") if x.strip())
     if TARGET_DATES:
         dates.update(x.strip() for x in TARGET_DATES.split(",") if x.strip())
     if WATCH_MONTHS:
@@ -148,9 +161,17 @@ def target_dates(today: dt.date) -> list[str]:
     return sorted(x for x in dates if x >= today.strftime("%Y%m%d"))
 
 
-def fmt_date(yyyymmdd: str) -> str:
-    d = dt.datetime.strptime(yyyymmdd, "%Y%m%d").date()
+def _fmt_day(d: dt.date) -> str:
     return f"{d.month}/{d.day}({WEEKDAY_KO[d.weekday()]})"
+
+
+def fmt_date(key: str) -> str:
+    start, _, n = key.partition(":")
+    d = dt.datetime.strptime(start, "%Y%m%d").date()
+    nights = int(n or 1)
+    if nights <= 1:
+        return _fmt_day(d)
+    return f"{_fmt_day(d)}~{_fmt_day(d + dt.timedelta(days=nights))} {nights}박"
 
 
 # ---------------------------------------------------------------- 상태/알림
@@ -181,7 +202,7 @@ def telegram(text: str) -> None:
 # ---------------------------------------------------------------- 1회 점검
 def check_once(api: XTicket, dates: list[str]) -> dict[str, dict[str, list[str]]]:
     """{날짜: {시설명: [가능 사이트...]}} — 잔여가 없는 날짜는 빈 dict."""
-    months = sorted({d[:6] for d in dates})
+    months = sorted({n[:6] for d in dates for n in nights_of(d)})
     remain: dict[str, int] = {}
     for m in months:
         remain.update(api.month_remain(m))
@@ -190,13 +211,14 @@ def check_once(api: XTicket, dates: list[str]) -> dict[str, dict[str, list[str]]
     result: dict[str, dict[str, list[str]]] = {}
     for d in dates:
         result[d] = {}
-        if remain.get(d, 0) <= 0:
-            continue
-        for g in api.groups(d):
+        nights = nights_of(d)
+        if any(remain.get(n, 0) <= 0 for n in nights):
+            continue  # 하룻밤이라도 만석이면 연박 불가
+        for g in api.groups(nights[0]):
             name = g["product_group_name"]
             if wanted_groups and name not in wanted_groups:
                 continue
-            sites = api.available_sites(g["product_group_code"], d)
+            sites = api.available_sites(g["product_group_code"], nights[0], len(nights))
             if sites:
                 result[d][name] = sites
             time.sleep(0.5)
