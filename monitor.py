@@ -58,6 +58,8 @@ HEADERS = {
 PAGE_HEADERS = {"Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8"}
 XHR_HEADERS = {
     "X-Requested-With": "XMLHttpRequest",
+    "Origin": BASE,
+    "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
     "Accept": "application/json, text/javascript, */*; q=0.01",
 }
 
@@ -87,6 +89,9 @@ class XTicket:
         r.raise_for_status()
         info = self._post("/Web/Book/GetShopInformation.json", {"shop_encode": SHOP_ENCODE})
         self.shop_name = (info.get("data") or {}).get("shop_name", "") or self.shop_name
+        # 사이트는 화면처럼 '이번 달'을 먼저 조회해야 다른 달 데이터를 돌려준다
+        play_month = (info.get("data") or {}).get("play_month") or dt.datetime.now(KST).strftime("%Y%m")
+        self._post("/Web/Book/GetBookPlayDate.json", {"play_month": play_month})
 
     def _post(self, path: str, data: dict) -> dict:
         r = self.s.post(
