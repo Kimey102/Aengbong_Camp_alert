@@ -95,6 +95,8 @@ class XTicket:
             if j.get("redirect") or "세션" in str(err.get("message", "")):
                 raise SessionExpired(err.get("message"))
             raise RuntimeError(f"{path}: {err.get('message')}")
+        if "data" not in j and path != "/Web/Book/GetShopInformation.json":
+            raise RuntimeError(f"{path} 예상 밖 응답: {r.text[:300]}")
         return j
 
     def month_remain(self, yyyymm: str) -> dict[str, int]:
