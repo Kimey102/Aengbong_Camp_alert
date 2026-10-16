@@ -81,7 +81,7 @@ class XTicket:
     def open(self) -> None:
         r = self.s.get(main_url(), timeout=20)
         r.raise_for_status()
-        info = self._post("/Web/Book/GetShopInformation.json", {})
+        info = self._post("/Web/Book/GetShopInformation.json", {"shop_encode": SHOP_ENCODE})
         self.shop_name = (info.get("data") or {}).get("shop_name", "") or self.shop_name
 
     def _post(self, path: str, data: dict) -> dict:
