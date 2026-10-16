@@ -1,0 +1,59 @@
+name: camp-alert
+
+on:
+  schedule:
+    - cron: "*/5 * * * *"   # GitHub 최소 간격 5분(실제로는 지연될 수 있음)
+  workflow_dispatch:
+    inputs:
+      report:
+        description: "현재 상태를 텔레그램으로 보고받기(설정 확인용)"
+        type: boolean
+        default: true
+
+concurrency:
+  group: camp-alert
+  cancel-in-progress: false
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - run: pip install requests
+
+      - name: Restore previous state
+        uses: actions/cache/restore@v4
+        with:
+          path: state.json
+          key: camp-state-${{ github.run_id }}
+          restore-keys: camp-state-
+
+      - name: Check availability
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          SHOP_ENCODE: ${{ vars.SHOP_ENCODE }}
+          TARGET_DATES: ${{ vars.TARGET_DATES }}
+          WATCH_MONTHS: ${{ vars.WATCH_MONTHS }}
+          WEEKDAYS: ${{ vars.WEEKDAYS || 'fri,sat' }}
+          GROUPS: ${{ vars.GROUPS }}
+          LOOP_MINUTES: ${{ vars.LOOP_MINUTES || '4' }}
+          INTERVAL_SEC: ${{ vars.INTERVAL_SEC || '60' }}
+          FORCE_REPORT: ${{ github.event_name == 'workflow_dispatch' && inputs.report && '1' || '' }}
+        run: |
+          if [ -z "$SHOP_ENCODE" ]; then unset SHOP_ENCODE; fi
+          if [ "$FORCE_REPORT" = "1" ]; then export LOOP_MINUTES=0; fi
+          python monitor.py
+
+      - name: Save state
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: state.json
+          key: camp-state-${{ github.run_id }}
