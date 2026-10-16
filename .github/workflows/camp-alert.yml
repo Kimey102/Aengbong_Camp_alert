@@ -39,6 +39,7 @@ jobs:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
           SHOP_ENCODE: ${{ vars.SHOP_ENCODE }}
+          STAYS: ${{ vars.STAYS }}
           TARGET_DATES: ${{ vars.TARGET_DATES }}
           WATCH_MONTHS: ${{ vars.WATCH_MONTHS }}
           WEEKDAYS: ${{ vars.WEEKDAYS || 'fri,sat' }}
