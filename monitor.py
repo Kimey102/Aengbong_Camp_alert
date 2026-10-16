@@ -199,15 +199,24 @@ def save_state(state: dict) -> None:
 
 def telegram(text: str) -> None:
     if not (TG_TOKEN and TG_CHAT):
-        log("텔레그램 설정이 없어 콘솔에만 출력합니다:\n" + text)
+        missing = [n for n, v in (("TELEGRAM_BOT_TOKEN", TG_TOKEN), ("TELEGRAM_CHAT_ID", TG_CHAT)) if not v]
+        print(f"::error::텔레그램 Secret이 비어 있습니다: {', '.join(missing)}", flush=True)
+        log(text)
         return
     r = requests.post(
-        f"https://api.telegram.org/bot{TG_TOKEN}/sendMessage",
-        json={"chat_id": TG_CHAT, "text": text, "disable_web_page_preview": True},
+        f"https://api.telegram.org/bot{TG_TOKEN.strip()}/sendMessage",
+        json={"chat_id": TG_CHAT.strip(), "text": text, "disable_web_page_preview": True},
         timeout=20,
     )
-    if not r.ok:
-        log(f"텔레그램 전송 실패: {r.status_code} {r.text[:200]}")
+    if r.ok:
+        print("::notice::텔레그램 전송 성공", flush=True)
+    else:
+        desc = ""
+        try:
+            desc = r.json().get("description", "")
+        except Exception:
+            desc = r.text[:200]
+        print(f"::error::텔레그램 전송 실패 ({r.status_code}): {desc}", flush=True)
 
 
 # ---------------------------------------------------------------- 1회 점검
