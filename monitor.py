@@ -86,7 +86,10 @@ class XTicket:
             hist = [f"{h.status_code}->{h.headers.get('Location','')[:80]}" for h in r.history]
             print(f"::warning::DEBUG main={r.status_code} url={r.url[:90]} hist={hist} len={len(r.text)} "
                   f"cookies={[(c.name, c.domain, c.path) for c in self.s.cookies]} "
-                  f"set-cookie={r.headers.get('Set-Cookie','')[:150]} shopinfo_keys={list((info.get('data') or {}).keys())[:6]} raw={str(info)[:120]}", flush=True)
+                  f"set-cookie={r.headers.get('Set-Cookie','')[:150]} shopinfo_keys={list((info.get('data') or {}).keys())[:3]}", flush=True)
+            import re as _re
+            body = _re.sub(r"\s+", " ", _re.sub(r"<script.*?</script>|<style.*?</style>", " ", r.text, flags=_re.S))
+            print(f"::warning::DEBUG body={body[:900]}", flush=True)
         self.shop_name = (info.get("data") or {}).get("shop_name", "") or self.shop_name
 
     def _post(self, path: str, data: dict) -> dict:
