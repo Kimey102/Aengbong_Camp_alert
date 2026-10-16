@@ -217,6 +217,26 @@ def telegram(text: str) -> None:
         except Exception:
             desc = r.text[:200]
         print(f"::error::텔레그램 전송 실패 ({r.status_code}): {desc}", flush=True)
+        if "chat not found" in desc:
+            diagnose_telegram()
+
+
+def diagnose_telegram() -> None:
+    """chat not found 원인 점검. 공개 로그이므로 숫자는 끝 3자리만 표시."""
+    tok, chat = TG_TOKEN.strip(), TG_CHAT.strip()
+    mask = lambda v: f"...{str(v)[-3:]}"
+    try:
+        me = requests.get(f"https://api.telegram.org/bot{tok}/getMe", timeout=20).json()
+        bot = (me.get("result") or {}).get("username", "?")
+        up = requests.get(f"https://api.telegram.org/bot{tok}/getUpdates", timeout=20).json()
+        chats = sorted({str(u.get("message", u.get("my_chat_member", {})).get("chat", {}).get("id"))
+                        for u in up.get("result", [])} - {"None"})
+    except Exception as e:  # noqa: BLE001
+        print(f"::warning::텔레그램 점검 실패: {e}", flush=True)
+        return
+    shape = ("숫자만" if chat.lstrip("-").isdigit() else "숫자 외 문자 포함") + f", {len(chat)}자리, 끝 {mask(chat)}"
+    print(f"::warning::점검 - 토큰의 봇: @{bot} / 등록된 Chat ID: {shape} / "
+          f"이 봇이 받은 대화방 ID: {[mask(c) for c in chats] or '없음(이 봇에게 온 메시지 없음)'}", flush=True)
 
 
 # ---------------------------------------------------------------- 1회 점검
