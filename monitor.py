@@ -268,7 +268,7 @@ def main() -> int:
     today = dt.datetime.now(KST).date()
     dates = target_dates(today)
     if not dates:
-        log("감시할 날짜가 없습니다. TARGET_DATES 또는 WATCH_MONTHS를 설정하세요.")
+        print("::error::감시할 날짜가 없습니다. Variables에 STAYS(또는 TARGET_DATES, WATCH_MONTHS)를 등록하세요.", flush=True)
         return 1
     log(f"감시 대상 {len(dates)}일: {', '.join(fmt_date(d) for d in dates)}")
 
@@ -296,4 +296,11 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    try:
+        sys.exit(main())
+    except requests.exceptions.RequestException as e:
+        print(f"::error::캠핑장 사이트 접속 실패({type(e).__name__}): {str(e)[:300]}", flush=True)
+        raise
+    except Exception as e:
+        print(f"::error::{type(e).__name__}: {str(e)[:300]}", flush=True)
+        raise
