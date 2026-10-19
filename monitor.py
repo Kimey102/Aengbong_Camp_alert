@@ -314,18 +314,28 @@ def main() -> int:
 
     state = load_state()
     first_run = not state
-    _API = XTicket()
-    _API.open()
+    _API = connect()
 
     deadline = time.time() + LOOP_MINUTES * 60
+    fails = 0
     while True:
         try:
             cur = check_once(_API, dates)
-        except SessionExpired:
-            log("세션 만료, 다시 접속합니다")
-            _API = XTicket()
-            _API.open()
-            cur = check_once(_API, dates)
+            fails = 0
+        except (SessionExpired, requests.exceptions.RequestException, RuntimeError, KeyError, ValueError) as e:
+            # 서버가 순간적으로 끊거나 세션이 만료돼도 실행을 끝내지 않고 다시 접속
+            fails += 1
+            print(f"::warning::조회 실패 {fails}회째({type(e).__name__}: {str(e)[:150]}), 잠시 후 다시 접속합니다", flush=True)
+            if fails >= 15:
+                raise
+            time.sleep(min(30 * fails, 300))
+            try:
+                _API = connect()
+            except Exception as e2:  # noqa: BLE001
+                print(f"::warning::재접속 실패: {type(e2).__name__}", flush=True)
+            if time.time() > deadline:
+                break
+            continue
         diff_and_notify(state, cur, first_run)
         state, first_run = cur, False
         save_state(state)
@@ -333,6 +343,21 @@ def main() -> int:
             break
         time.sleep(INTERVAL_SEC + random.uniform(-5, 5))
     return 0
+
+
+def connect() -> XTicket:
+    """접속(세션 준비). 일시적 연결 오류는 몇 번 다시 시도."""
+    for i in range(5):
+        api = XTicket()
+        try:
+            api.open()
+            return api
+        except (requests.exceptions.RequestException, RuntimeError, SessionExpired) as e:
+            if i == 4:
+                raise
+            print(f"::warning::접속 재시도 {i + 1}회({type(e).__name__})", flush=True)
+            time.sleep(20 * (i + 1))
+    raise RuntimeError("unreachable")
 
 
 if __name__ == "__main__":

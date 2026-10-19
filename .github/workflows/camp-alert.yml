@@ -2,7 +2,7 @@ name: camp-alert
 
 on:
   schedule:
-    - cron: "*/5 * * * *"   # GitHub 최소 간격 5분(실제로는 지연될 수 있음)
+    - cron: "*/15 * * * *"  # GitHub가 자주 지연시키므로, 한 번 시작되면 약 5시간 50분 동안 계속 감시
   workflow_dispatch:
     inputs:
       report:
@@ -10,24 +10,41 @@ on:
         type: boolean
         default: true
 
-concurrency:
-  group: camp-alert
-  cancel-in-progress: false
+permissions:
+  contents: read
+  actions: read
 
 jobs:
   check:
     runs-on: ubuntu-latest
-    timeout-minutes: 8
+    timeout-minutes: 358
     steps:
+      - name: Skip if another run is already watching
+        id: guard
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # 이미 감시 중인 (먼저 시작된) 실행이 있으면 이번 실행은 조용히 종료
+          older=$(gh api "repos/${{ github.repository }}/actions/workflows/camp-alert.yml/runs?status=in_progress&per_page=20" \
+            --jq "[.workflow_runs[] | select(.id < ${{ github.run_id }})] | length")
+          if [ "${older:-0}" -gt 0 ] && [ "${{ github.event_name }}" = "schedule" ]; then
+            echo "다른 실행이 이미 감시 중이라 건너뜁니다."
+            echo "skip=1" >> "$GITHUB_OUTPUT"
+          fi
+
       - uses: actions/checkout@v4
+        if: steps.guard.outputs.skip != '1'
 
       - uses: actions/setup-python@v5
+        if: steps.guard.outputs.skip != '1'
         with:
           python-version: "3.12"
 
       - run: pip install requests
+        if: steps.guard.outputs.skip != '1'
 
       - name: Restore previous state
+        if: steps.guard.outputs.skip != '1'
         uses: actions/cache/restore@v4
         with:
           path: state.json
@@ -35,6 +52,7 @@ jobs:
           restore-keys: camp-state-
 
       - name: Check availability
+        if: steps.guard.outputs.skip != '1'
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
@@ -44,7 +62,7 @@ jobs:
           WATCH_MONTHS: ${{ vars.WATCH_MONTHS }}
           WEEKDAYS: ${{ vars.WEEKDAYS || 'fri,sat' }}
           GROUPS: ${{ vars.GROUPS }}
-          LOOP_MINUTES: ${{ vars.LOOP_MINUTES || '4' }}
+          LOOP_MINUTES: ${{ vars.LOOP_MINUTES || '345' }}
           INTERVAL_SEC: ${{ vars.INTERVAL_SEC || '60' }}
           FORCE_REPORT: ${{ github.event_name == 'workflow_dispatch' && inputs.report && '1' || '' }}
         run: |
@@ -53,7 +71,7 @@ jobs:
           python monitor.py
 
       - name: Save state
-        if: always()
+        if: always() && steps.guard.outputs.skip != '1'
         uses: actions/cache/save@v4
         with:
           path: state.json
